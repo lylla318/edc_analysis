@@ -7,14 +7,14 @@ library(dplyr)
 
 RAQSAPI::aqs_credentials("lylla.younes@propublica.org", "indigokit95")
 
-## NOTES ##
+######### NOTES #########
 
+### Unit conversions ###
 # The general equation is
 # µg/m3 = (ppb)*(12.187)*(M) / (273.15 + °C)
 # where M is the molecular weight of the gaseous pollutant. An atmospheric pressure of 1
 # atmosphere is assumed.
 
-# Risk screening levels
 # Calculated from:
 # Draft Calvert City Air Toxics Monitoring Risk/Hazard Screening, Dr. Solomon Pollard, US EPA, 10/31/2017
 # Converted values from ug/m3 to ppbv using STP at: https://www3.epa.gov/ceampubl/learn2model/part-two/onsite/ia_unit_conversion.html
@@ -25,38 +25,16 @@ RAQSAPI::aqs_credentials("lylla.younes@propublica.org", "indigokit95")
 # benchmark ~ ilcr of 1 ppbC edc = 0.5 ppbV edc = 2.0225ug/m3 edc 
 # ilcr = 2.0225ug/m3 edc * (0.026/1000)
 
+### County information ###
+# Marshall County, KY (the county for Calvert City)
+# Carter County (Grayson Lake NATTS site)
+# Livingston County (Bloodworth site)
+
+### Risk screening levels ###
 edc_screening_level_ppbC = 0.0190172 # 0.03846154 ug/m3 0.00952 
 vc_screening_level_ppbC  = 0.0889640 # 0.01136364 ug/m3 
-  
-## vinyl chloride param      = 43860 ##
-## ethylene dichloride param = 43815 ##
-# calvert <- aqs_sampledata_by_box(
-#     parameter = c("43815", "43860"), 
-#     bdate = as.Date("20050101", format = "%Y%m%d"),
-#     edate = as.Date("20211231", format = "%Y%m%d"),
-#     minlat = "36", 
-#     maxlat = "37", 
-#     minlon = "-90", 
-#     maxlon = "-86", 
-#     return_header = TRUE
-# )
-#   
-# calvert <- aqs_sampledata_by_state(
-#   parameter = c("43815", "43860"), 
-#   bdate = as.Date("20050101", format = "%Y%m%d"),
-#   edate = as.Date("20211231", format = "%Y%m%d"),
-#   stateFIPS = "21", 
-#   return_header = TRUE
-# )
-# 
-# View(calvert)
-# ## $$c(W 89°02'00"--W 87°38'00"/N 37°19'00"--N 36°29'00")
-# calvert_data <- calvert[[1]][["Data"]]
-# View(calvert_data)
-# 
-# acslist <- lapply(2012:2018, function (x)  censusGrab(x))
-# acslist12_18 <- acslist[[1]]
-# for (i in 2:length(acslist)) acslist12_18 <- bind_rows(acslist12_18, acslist[[i]])
+
+## Output is in ppbC !!!
 
 
 #### SET PARAMETERS ###
@@ -66,9 +44,8 @@ begin_date <- ymd("20100101")
 end_date <- ymd("20211231")
 state_code <- "21" #KY
 
-# Marshall County, KY (the county for Calvert City)
-# Carter County (Grayson Lake NATTS site)
-# Livingston County (Bloodworth site)
+f_params = c("43502")
+
 county_codes <- c("157", "043", "139") 
 
 calvert_city_data <- aqs_sampledata_by_state(
@@ -232,6 +209,103 @@ cc_vc_poc6_by_year <- calvert_city_data %>%
             ilcr = mean(ilcr, na.rm =T))
 
 View(cc_vc_poc6_by_year)
+
+
+
+##########################################
+######### NATIONAWIDE ANALYSIS ###########
+##########################################
+
+# params = c("43815", "43860") # EDC, VC
+# state_code <- "21" #KY
+
+# Set parameters
+state_codes = c("01", "02", "04", "05", "06", "08", "09", "10", "11", "12", "13", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34", "35", "36", "37", "38", "39", "40", "41", "42", "72", "44", "45", "46", "47", "48", "49", "50", "51", "78", "53", "54", "55", "56")
+params = c("43502") # formaldehyde
+begin_date <- ymd("20100101")
+end_date <- ymd("20211231")
+
+# Pull and clean sample data.
+get_state_sample_data <- function(state_code) {
+  print(state_code)
+  state_data <- aqs_sampledata_by_state(
+    parameter = params,
+    bdate = begin_date,
+    edate = end_date,
+    stateFIPS = state_code
+  )
+  return(state_data)
+}
+
+national_data <- lapply(state_codes, function (x)  get_state_sample_data(x))
+national_data_all <- national_data[[1]]
+for (i in 2:length(national_data)) national_data_all <- bind_rows(national_data_all, national_data[[i]])
+View(national_data_all)
+
+national_data_all_cleaned <- national_data_all %>%
+  mutate(
+    site_code = paste(state_code, county_code, site_number, parameter_code, poc, sep = "-"),
+    date_local = ymd(date_local),
+    sample_measurement = as.numeric(sample_measurement)
+  )
+
+
+# Pull and clean monitor data
+get_state_monitor_data <- function(state_code) {
+  print(state_code)
+  state_monitor_data <- aqs_monitors_by_state(
+    parameter = params,
+    bdate = begin_date,
+    edate = end_date,
+    stateFIPS = state_code
+  )
+  return(state_monitor_data)
+}
+
+national_monitoring_data <- lapply(state_codes, function (x)  get_state_monitor_data(x))
+national_monitoring_data_all <- national_monitoring_data[[1]]
+for (i in 2:length(national_monitoring_data)) national_monitoring_data_all <- bind_rows(national_monitoring_data_all, national_monitoring_data[[i]])
+View(national_monitoring_data_all)
+
+national_monitoring_data_all_cleaned <- national_monitoring_data_all %>%
+  mutate (
+    site_code = paste(state_code, county_code, site_number, parameter_code, poc, sep = "-"),
+    monitor_code = paste(state_code, county_code, site_number, parameter_code, poc, sep="-" ),
+    latitude = as.numeric(latitude),
+    longitude = as.numeric(longitude)
+  )
+
+
+# Join location information
+national_aqs <- national_data_all_cleaned %>%
+  left_join(national_monitoring_data_all_cleaned %>% select(site_code, local_site_name) %>% unique(), by = "site_code")
+
+View(national_aqs)
+
+# Filter for EDC
+# national_aqs_edc <- national_aqs %>%
+#   filter(parameter == "Ethylene dichloride")
+
+write.csv(national_aqs, "/Users/lylla.younes/Desktop/national_aqs_formaldehyde.csv")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
